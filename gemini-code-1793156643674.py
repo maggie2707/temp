@@ -1,0 +1,599 @@
+# ==============================================================================
+# Python Practice Problems (Data Cleaning, Analysis, Visualization, PCA)
+# Stack: Python, NumPy, Pandas, Matplotlib, Seaborn, Plotly, Scikit-Learn
+# ==============================================================================
+
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import plotly.express as px
+import seaborn as sns
+from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler
+
+# ------------------------------------------------------------------------------
+# 1. College Library – Book Circulation Analysis
+# ------------------------------------------------------------------------------
+np.random.seed(42)
+n = 150
+library_df = pd.DataFrame(
+    {
+        "book_id": np.random.choice([f"B{i:03d}" for i in range(1, 31)], size=n),
+        "issue_date": pd.date_range("2024-01-01", periods=n, freq="D"),
+        "borrower_type": np.random.choice(
+            ["Student", "Faculty", "Research Scholar", np.nan],
+            size=n,
+            p=[0.6, 0.2, 0.15, 0.05],
+        ),
+        "days_borrowed": np.random.choice(
+            [3, 7, 14, 21, 30, 100, np.nan],
+            size=n,
+            p=[0.2, 0.3, 0.25, 0.1, 0.05, 0.05, 0.05],
+        ),
+    }
+)
+
+# Data Cleaning & Analysis
+library_df["borrower_type"].fillna("Student", inplace=True)
+library_df["days_borrowed"].fillna(
+    library_df["days_borrowed"].median(), inplace=True
+)
+
+# Outlier Detection (Days Borrowed > 30 considered overdue anomaly)
+q1, q3 = library_df["days_borrowed"].quantile([0.25, 0.75])
+iqr = q3 - q1
+upper_bound = q3 + 1.5 * iqr
+library_df["is_overdue_outlier"] = library_df["days_borrowed"] > upper_bound
+
+# Feature Engineering
+library_df["month"] = library_df["issue_date"].dt.month_name()
+
+# Visualization
+plt.figure(figsize=(8, 4))
+sns.boxplot(data=library_df, x="borrower_type", y="days_borrowed", palette="Set2")
+plt.title("Book Circulation Duration by Borrower Type")
+plt.xlabel("Borrower Type")
+plt.ylabel("Days Borrowed")
+plt.tight_layout()
+plt.show()
+
+
+# ------------------------------------------------------------------------------
+# 2. City Bus Service – Passenger Demand Analysis
+# ------------------------------------------------------------------------------
+n = 200
+bus_df = pd.DataFrame(
+    {
+        "route_id": np.random.choice(["Route_A", "Route_B", "Route_C"], size=n),
+        "time_slot": np.random.choice(
+            ["Morning Peak", "Afternoon", "Evening Peak", "Night"], size=n
+        ),
+        "passengers": np.random.poisson(lam=45, size=n),
+        "delay_minutes": np.random.exponential(scale=5, size=n),
+    }
+)
+bus_df.loc[np.random.choice(n, 10), "passengers"] = np.nan
+
+# Missing Value Handling & Validation
+bus_df["passengers"] = bus_df.groupby("time_slot")["passengers"].transform(
+    lambda x: x.fillna(x.median())
+)
+
+# Statistical Aggregation
+demand_summary = (
+    bus_df.groupby(["route_id", "time_slot"])
+    .agg(
+        total_passengers=("passengers", "sum"),
+        avg_passengers=("passengers", "mean"),
+        avg_delay=("delay_minutes", "mean"),
+    )
+    .reset_index()
+)
+
+# Visualization
+plt.figure(figsize=(9, 4))
+sns.barplot(
+    data=demand_summary,
+    x="route_id",
+    y="total_passengers",
+    hue="time_slot",
+    palette="viridis",
+)
+plt.title("Total Passenger Demand by Route and Time Slot")
+plt.xlabel("Route")
+plt.ylabel("Passenger Count")
+plt.tight_layout()
+plt.show()
+
+
+# ------------------------------------------------------------------------------
+# 3. Agriculture – Crop Yield and Rainfall Analysis
+# ------------------------------------------------------------------------------
+n = 100
+agri_df = pd.DataFrame(
+    {
+        "rainfall_mm": np.random.uniform(300, 1500, size=n),
+        "fertilizer_kg": np.random.uniform(50, 250, size=n),
+        "temperature_c": np.random.normal(28, 4, size=n),
+        "yield_tons": np.random.uniform(2, 10, size=n),
+    }
+)
+
+# Add Synthetic Correlation
+agri_df["yield_tons"] = (
+    0.004 * agri_df["rainfall_mm"]
+    + 0.015 * agri_df["fertilizer_kg"]
+    - 0.05 * agri_df["temperature_c"]
+    + np.random.normal(0, 0.5, n)
+)
+
+# Feature Engineering
+agri_df["rain_per_fertilizer"] = (
+    agri_df["rainfall_mm"] / agri_df["fertilizer_kg"]
+)
+
+# Statistical Correlation & Heatmap
+plt.figure(figsize=(6, 5))
+sns.heatmap(agri_df.corr(), annot=True, cmap="coolwarm", fmt=".2f")
+plt.title("Crop Yield & Climate Feature Correlation")
+plt.tight_layout()
+plt.show()
+
+
+# ------------------------------------------------------------------------------
+# 4. Online Shopping – Order and Delivery Analysis
+# ------------------------------------------------------------------------------
+n = 120
+orders_df = pd.DataFrame(
+    {
+        "order_id": np.arange(1001, 1001 + n),
+        "order_value": np.random.exponential(scale=100, size=n),
+        "delivery_days": np.random.choice(
+            [1, 2, 3, 4, 5, 12, np.nan], size=n, p=[0.2, 0.3, 0.25, 0.1, 0.08, 0.02, 0.05]
+        ),
+        "customer_rating": np.random.choice([1, 2, 3, 4, 5], size=n, p=[0.05, 0.05, 0.1, 0.4, 0.4]),
+    }
+)
+
+# Cleaning
+orders_df["delivery_days"].fillna(
+    orders_df["delivery_days"].median(), inplace=True
+)
+
+# Outlier Detection using Z-Score
+z_scores = np.abs(
+    (orders_df["delivery_days"] - orders_df["delivery_days"].mean())
+    / orders_df["delivery_days"].std()
+)
+orders_df["is_delivery_outlier"] = z_scores > 3
+
+# Visualization
+fig, axes = plt.subplots(1, 2, figsize=(11, 4))
+sns.histplot(
+    orders_df["order_value"], kde=True, ax=axes[0], color="skyblue"
+)
+axes[0].set_title("Order Value Distribution")
+
+sns.scatterplot(
+    data=orders_df,
+    x="delivery_days",
+    y="customer_rating",
+    hue="is_delivery_outlier",
+    ax=axes[1],
+    palette="Set1",
+)
+axes[1].set_title("Delivery Days vs Rating")
+plt.tight_layout()
+plt.show()
+
+
+# ------------------------------------------------------------------------------
+# 5. Weather Station – Temperature and Humidity Analysis
+# ------------------------------------------------------------------------------
+dates = pd.date_range("2024-01-01", periods=180, freq="D")
+weather_df = pd.DataFrame(
+    {
+        "date": dates,
+        "temperature": 20
+        + 10 * np.sin(np.linspace(0, 3.14, 180))
+        + np.random.normal(0, 2, 180),
+        "humidity": 60
+        - 15 * np.sin(np.linspace(0, 3.14, 180))
+        + np.random.normal(0, 5, 180),
+    }
+)
+weather_df.loc[10:12, "temperature"] = np.nan
+
+# Interpolation for Missing Weather Series Data
+weather_df["temperature"] = weather_df["temperature"].interpolate(method="linear")
+
+# Feature Engineering: Heat Index Approximation
+weather_df["heat_index"] = (
+    weather_df["temperature"] + 0.5555 * (weather_df["humidity"] - 10)
+)
+
+# Time Series Plot
+plt.figure(figsize=(10, 4))
+plt.plot(
+    weather_df["date"],
+    weather_df["temperature"],
+    label="Temperature (°C)",
+    color="tab:red",
+)
+plt.plot(
+    weather_df["date"],
+    weather_df["humidity"],
+    label="Humidity (%)",
+    color="tab:blue",
+)
+plt.title("Temperature and Humidity Trends Over Time")
+plt.xlabel("Date")
+plt.legend()
+plt.tight_layout()
+plt.show()
+
+
+# ------------------------------------------------------------------------------
+# 6. Electricity Consumption – Energy Usage Analysis
+# ------------------------------------------------------------------------------
+n = 150
+energy_df = pd.DataFrame(
+    {
+        "household_id": np.random.randint(100, 120, size=n),
+        "kwh_usage": np.random.gamma(shape=3, scale=50, size=n),
+        "is_weekend": np.random.choice([0, 1], size=n, p=[0.7, 0.3]),
+        "appliance_count": np.random.randint(3, 15, size=n),
+    }
+)
+
+# Feature Engineering
+energy_df["kwh_per_appliance"] = (
+    energy_df["kwh_usage"] / energy_df["appliance_count"]
+)
+
+# Statistical Summary Grouped by Day Type
+usage_stats = energy_df.groupby("is_weekend")["kwh_usage"].describe()
+
+# Visualization
+plt.figure(figsize=(7, 4))
+sns.violinplot(
+    data=energy_df,
+    x="is_weekend",
+    y="kwh_usage",
+    palette="muted",
+    inner="quartile",
+)
+plt.xticks([0, 1], ["Weekday", "Weekend"])
+plt.title("Electricity Usage Distribution: Weekday vs Weekend")
+plt.ylabel("kWh Usage")
+plt.tight_layout()
+plt.show()
+
+
+# ------------------------------------------------------------------------------
+# 7. Sports Academy – Fitness Performance Analysis
+# ------------------------------------------------------------------------------
+n = 80
+sports_df = pd.DataFrame(
+    {
+        "athlete_id": np.arange(1, n + 1),
+        "sprint_100m_sec": np.random.normal(12.5, 1.2, size=n),
+        "stamina_score": np.random.uniform(50, 100, size=n),
+        "flexibility_cm": np.random.normal(25, 5, size=n),
+        "bmi": np.random.normal(22, 3, size=n),
+    }
+)
+
+# Data Validation: Standardize metrics
+scaler = StandardScaler()
+scaled_features = scaler.fit_transform(
+    sports_df[["sprint_100m_sec", "stamina_score", "flexibility_cm", "bmi"]]
+)
+sports_scaled = pd.DataFrame(
+    scaled_features,
+    columns=["sprint_z", "stamina_z", "flexibility_z", "bmi_z"],
+)
+
+# Overall Performance Metric (Composite Score)
+sports_df["overall_score"] = (
+    -sports_scaled["sprint_z"]
+    + sports_scaled["stamina_z"]
+    + sports_scaled["flexibility_z"]
+)
+
+# Visualization
+plt.figure(figsize=(8, 4))
+sns.scatterplot(
+    data=sports_df,
+    x="stamina_score",
+    y="sprint_100m_sec",
+    size="overall_score",
+    hue="overall_score",
+    palette="viridis",
+    legend="brief",
+)
+plt.title("Athlete Stamina vs Sprint Performance")
+plt.tight_layout()
+plt.show()
+
+
+# ------------------------------------------------------------------------------
+# 8. Cinema Booking – Occupancy and Revenue Analysis
+# ------------------------------------------------------------------------------
+n = 100
+cinema_df = pd.DataFrame(
+    {
+        "screen_id": np.random.choice(["Screen 1", "Screen 2", "Screen 3"], size=n),
+        "genre": np.random.choice(["Action", "Comedy", "Drama", "Sci-Fi"], size=n),
+        "ticket_price": np.random.choice([10, 12, 15, 18], size=n),
+        "seats_sold": np.random.randint(20, 150, size=n),
+        "total_capacity": 150,
+    }
+)
+
+# Feature Engineering
+cinema_df["occupancy_rate"] = cinema_df["seats_sold"] / cinema_df["total_capacity"]
+cinema_df["revenue"] = cinema_df["seats_sold"] * cinema_df["ticket_price"]
+
+# Data Validation Check
+cinema_df = cinema_df[cinema_df["occupancy_rate"] <= 1.0]
+
+# Plotly Interactive Chart
+fig = px.scatter(
+    cinema_df,
+    x="occupancy_rate",
+    y="revenue",
+    color="genre",
+    size="ticket_price",
+    hover_data=["screen_id"],
+    title="Interactive Cinema Revenue vs Occupancy Rate",
+)
+fig.show()
+
+
+# ------------------------------------------------------------------------------
+# 9. Online Learning – Course Engagement Analysis
+# ------------------------------------------------------------------------------
+n = 120
+learning_df = pd.DataFrame(
+    {
+        "user_id": np.arange(101, 101 + n),
+        "videos_watched": np.random.poisson(lam=12, size=n),
+        "quiz_score": np.random.normal(75, 15, size=n),
+        "forum_posts": np.random.poisson(lam=3, size=n),
+        "completed": np.random.choice([0, 1], size=n, p=[0.6, 0.4]),
+    }
+)
+
+# Data Cleaning: Clip Quiz Scores to Valid Range [0, 100]
+learning_df["quiz_score"] = learning_df["quiz_score"].clip(0, 100)
+
+# Feature Engineering: Engagement Index
+learning_df["engagement_index"] = (
+    learning_df["videos_watched"] * 2 + learning_df["forum_posts"] * 5
+)
+
+# Correlation Analysis
+plt.figure(figsize=(7, 4))
+sns.boxplot(
+    data=learning_df,
+    x="completed",
+    y="engagement_index",
+    palette="Set3",
+)
+plt.title("Course Completion by Engagement Index")
+plt.xticks([0, 1], ["Incomplete", "Completed"])
+plt.tight_layout()
+plt.show()
+
+
+# ------------------------------------------------------------------------------
+# 10. Solar Power Plant – Energy Generation Analysis
+# ------------------------------------------------------------------------------
+n = 100
+solar_df = pd.DataFrame(
+    {
+        "solar_irradiance": np.random.uniform(200, 1000, size=n),
+        "ambient_temp": np.random.uniform(20, 45, size=n),
+        "panel_cleaning_days_ago": np.random.randint(1, 60, size=n),
+        "kwh_generated": np.zeros(n),
+    }
+)
+
+# Yield Logic with Panel Degradation Over Time
+solar_df["kwh_generated"] = (
+    0.15 * solar_df["solar_irradiance"]
+    - 0.5 * solar_df["ambient_temp"]
+    - 0.3 * solar_df["panel_cleaning_days_ago"]
+    + np.random.normal(10, 2, n)
+)
+
+# Clean Negative Estimates
+solar_df["kwh_generated"] = solar_df["kwh_generated"].clip(lower=0)
+
+# Plotly Interactive Visualization
+fig = px.scatter_3d(
+    solar_df,
+    x="solar_irradiance",
+    y="ambient_temp",
+    z="kwh_generated",
+    color="panel_cleaning_days_ago",
+    title="3D Solar Power Generation Factors Analysis",
+)
+fig.show()
+
+
+# ------------------------------------------------------------------------------
+# 11. Retail Customers – Customer Segmentation Using PCA
+# ------------------------------------------------------------------------------
+n = 150
+retail_df = pd.DataFrame(
+    {
+        "annual_income": np.random.normal(60000, 15000, size=n),
+        "spending_score": np.random.uniform(1, 100, size=n),
+        "purchase_frequency": np.random.poisson(lam=15, size=n),
+        "recency_days": np.random.exponential(scale=30, size=n),
+    }
+)
+
+# Preprocessing & Standard Scaling
+scaler = StandardScaler()
+X_scaled = scaler.fit_transform(retail_df)
+
+# Principal Component Analysis (PCA)
+pca = PCA(n_components=2)
+components = pca.fit_transform(X_scaled)
+
+pca_df = pd.DataFrame(components, columns=["PC1", "PC2"])
+print(f"Explained Variance Ratio (PCA): {pca.explained_variance_ratio_}")
+
+# Visualization
+plt.figure(figsize=(7, 5))
+sns.scatterplot(data=pca_df, x="PC1", y="PC2", color="purple")
+plt.title("Retail Customer Segmentation via 2D PCA Space")
+plt.xlabel("Principal Component 1")
+plt.ylabel("Principal Component 2")
+plt.tight_layout()
+plt.show()
+
+
+# ------------------------------------------------------------------------------
+# 12. Manufacturing Plant – Quality Control and Defect Analysis
+# ------------------------------------------------------------------------------
+n = 100
+manufacturing_df = pd.DataFrame(
+    {
+        "batch_id": [f"BATCH_{i:03d}" for i in range(1, n + 1)],
+        "machine_speed_rpm": np.random.uniform(1000, 3000, size=n),
+        "vibration_level": np.random.normal(0.05, 0.01, size=n),
+        "defect_count": np.random.poisson(lam=2, size=n),
+    }
+)
+
+# Outlier Injection & Detection
+manufacturing_df.loc[15, "vibration_level"] = 0.25  # Anomaly
+manufacturing_df["is_anomaly"] = (
+    manufacturing_df["vibration_level"]
+    > manufacturing_df["vibration_level"].mean()
+    + 3 * manufacturing_df["vibration_level"].std()
+)
+
+# Plotly Interactive Inspection Plot
+fig = px.scatter(
+    manufacturing_df,
+    x="machine_speed_rpm",
+    y="defect_count",
+    color="is_anomaly",
+    size="vibration_level",
+    hover_data=["batch_id"],
+    title="Manufacturing Quality Control: Anomaly and Defect Tracking",
+)
+fig.show()
+
+
+# ------------------------------------------------------------------------------
+# 13. City Pollution – Interactive Plotly Visualization
+# ------------------------------------------------------------------------------
+cities = ["New York", "London", "Tokyo", "Delhi", "Beijing", "Paris"]
+dates = pd.date_range("2024-01-01", periods=30, freq="D")
+records = []
+
+for city in cities:
+    for date in dates:
+        records.append(
+            {
+                "city": city,
+                "date": date,
+                "pm2_5": np.random.uniform(10, 150)
+                if city in ["Delhi", "Beijing"]
+                else np.random.uniform(5, 50),
+                "no2": np.random.uniform(5, 60),
+                "aqi": np.random.randint(20, 300),
+            }
+        )
+
+pollution_df = pd.DataFrame(records)
+
+# Plotly Interactive Line Chart
+fig = px.line(
+    pollution_df,
+    x="date",
+    y="pm2_5",
+    color="city",
+    title="Daily PM2.5 Pollution Trends Across Major Cities",
+    labels={"pm2_5": "PM2.5 Level (µg/m³)", "date": "Date"},
+)
+fig.show()
+
+
+# ------------------------------------------------------------------------------
+# 14. Restaurant Operations – Waiting Time and Service Efficiency
+# ------------------------------------------------------------------------------
+n = 120
+restaurant_df = pd.DataFrame(
+    {
+        "party_size": np.random.choice([1, 2, 4, 6, 8], size=n, p=[0.1, 0.4, 0.3, 0.1, 0.1]),
+        "wait_time_mins": np.random.gamma(shape=2, scale=10, size=n),
+        "service_time_mins": np.random.normal(45, 10, size=n),
+        "satisfaction_score": np.random.choice([1, 2, 3, 4, 5], size=n),
+    }
+)
+
+# Feature Engineering
+restaurant_df["total_dining_duration"] = (
+    restaurant_df["wait_time_mins"] + restaurant_df["service_time_mins"]
+)
+
+# Bivariate Analysis Plot
+plt.figure(figsize=(8, 4))
+sns.regplot(
+    data=restaurant_df,
+    x="wait_time_mins",
+    y="satisfaction_score",
+    logistic=False,
+    scatter_kws={"alpha": 0.6},
+    line_kws={"color": "red"},
+)
+plt.title("Impact of Waiting Time on Customer Satisfaction")
+plt.xlabel("Wait Time (Minutes)")
+plt.ylabel("Satisfaction Score (1-5)")
+plt.tight_layout()
+plt.show()
+
+
+# ------------------------------------------------------------------------------
+# 15. Public Transport Planning – Multivariate Analysis Using PCA
+# ------------------------------------------------------------------------------
+n = 150
+transport_df = pd.DataFrame(
+    {
+        "avg_daily_trips": np.random.normal(500, 100, size=n),
+        "fleet_utilization_pct": np.random.uniform(50, 98, size=n),
+        "fuel_efficiency_kmpl": np.random.normal(6, 1.2, size=n),
+        "maintenance_cost_usd": np.random.normal(2000, 400, size=n),
+        "passenger_complaints": np.random.poisson(lam=8, size=n),
+    }
+)
+
+# Cleaning & Normalization
+scaler = StandardScaler()
+X_norm = scaler.fit_transform(transport_df)
+
+# Apply PCA for Dimensionality Reduction (Multivariate Structure)
+pca = PCA(n_components=3)
+components = pca.fit_transform(X_norm)
+
+transport_pca = pd.DataFrame(
+    components, columns=["PC1_Efficiency", "PC2_Volume", "PC3_Cost"]
+)
+
+# Interactive 3D Scatter Plot with Plotly
+fig = px.scatter_3d(
+    transport_pca,
+    x="PC1_Efficiency",
+    y="PC2_Volume",
+    z="PC3_Cost",
+    title="3D PCA Multivariate Analysis of Public Transport Operations",
+    opacity=0.8,
+)
+fig.show()
